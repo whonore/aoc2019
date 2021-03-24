@@ -1,11 +1,20 @@
-fn solve() -> u64 {
-    0
+fn calc_fuel(mass: u64) -> u64 {
+    mass / 3 - 2
+}
+
+fn solve(masses: &[u64]) -> u64 {
+    masses.iter().map(|m| calc_fuel(*m)).sum()
 }
 
 pub fn run() -> Result<String, String> {
-    let _input = include_str!("input/p01.txt");
-    let out1 = solve();
-    let out2 = solve();
+    let input = include_str!("input/p01.txt");
+    let masses = input
+        .lines()
+        .map(str::parse)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Bad input")?;
+    let out1 = solve(&masses);
+    let out2 = solve(&[]);
     Ok(format!("{} {}", out1, out2))
 }
 
@@ -15,6 +24,9 @@ mod tests {
 
     #[test]
     fn test01() {
-        assert_eq!(solve(), 0);
+        assert_eq!(calc_fuel(12), 2);
+        assert_eq!(calc_fuel(14), 2);
+        assert_eq!(calc_fuel(1969), 654);
+        assert_eq!(calc_fuel(100756), 33583);
     }
 }
