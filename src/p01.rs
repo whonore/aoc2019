@@ -13,8 +13,8 @@ pub fn run() -> Result<String, String> {
         .map(str::parse)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| "Bad input")?;
-    let out1 = solve(&masses);
-    let out2 = solve(&[]);
+    let out1 = part1(&masses);
+    let out2 = part2(&[]);
     Ok(format!("{} {}", out1, out2))
 }
 
