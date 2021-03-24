@@ -1,4 +1,4 @@
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq, Debug)]
 enum Opcode {
     Add(usize, usize, usize),
     Mul(usize, usize, usize),
@@ -25,6 +25,7 @@ impl Opcode {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 struct Intcode {
     data: Vec<usize>,
     ptr: usize,
