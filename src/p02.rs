@@ -50,19 +50,30 @@ impl Intcode {
         while !self.step()? {}
         Ok(())
     }
+
+    fn run_with(&mut self, noun: usize, verb: usize) -> Result<(), String> {
+        self.data[1] = noun;
+        self.data[2] = verb;
+        self.run()
+    }
 }
 
 fn part1(data: &[usize]) -> Result<usize, String> {
-    let mut data = data.to_vec();
-    data[1] = 12;
-    data[2] = 2;
-    let mut prog = Intcode::new(data);
-    prog.run()?;
+    let mut prog = Intcode::new(data.to_vec());
+    prog.run_with(12, 2)?;
     Ok(prog.data[0])
 }
 
-fn part2() -> u64 {
-    0
+fn part2(data: &[usize]) -> Result<usize, String> {
+    for noun in 0..99 {
+        for verb in 0..99 {
+            let mut prog = Intcode::new(data.to_vec());
+            if prog.run_with(noun, verb).is_ok() && prog.data[0] == 19690720 {
+                return Ok(100 * noun + verb);
+            }
+        }
+    }
+    Err("No solution found".into())
 }
 
 pub fn run() -> Result<String, String> {
@@ -74,7 +85,7 @@ pub fn run() -> Result<String, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| "Bad input")?;
     let out1 = part1(&data)?;
-    let out2 = part2();
+    let out2 = part2(&data)?;
     Ok(format!("{} {}", out1, out2))
 }
 
