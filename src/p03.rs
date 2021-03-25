@@ -3,6 +3,10 @@ use std::str::FromStr;
 
 type Point = (i64, i64);
 
+fn dist(p: Point) -> u64 {
+    (p.0.abs() + p.1.abs()) as u64
+}
+
 #[derive(PartialEq, Eq, Debug)]
 enum Dir {
     Up,
@@ -92,16 +96,25 @@ impl Wire {
         let ps1 = self
             .segs()
             .iter()
-            .cloned()
+            .copied()
             .flatten()
             .collect::<HashSet<Point>>();
         let ps2 = other
             .segs()
             .iter()
-            .cloned()
+            .copied()
             .flatten()
             .collect::<HashSet<Point>>();
-        ps1.intersection(&ps2).cloned().collect()
+        ps1.intersection(&ps2).copied().collect()
+    }
+
+    fn steps_to(&self, p: Point) -> Option<usize> {
+        self.segs()
+            .iter()
+            .copied()
+            .flatten()
+            .position(|x| x == p)
+            .map(|idx| idx + 1)
     }
 }
 
@@ -109,13 +122,19 @@ fn part1(wire1: &Wire, wire2: &Wire) -> u64 {
     wire1
         .intersect(wire2)
         .iter()
-        .map(|p| (p.0.abs() + p.1.abs()) as u64)
+        .copied()
+        .map(dist)
         .min()
         .unwrap_or(0)
 }
 
-fn part2() -> u64 {
-    0
+fn part2(wire1: &Wire, wire2: &Wire) -> u64 {
+    wire1
+        .intersect(wire2)
+        .iter()
+        .map(|p| (wire1.steps_to(*p).unwrap() + wire2.steps_to(*p).unwrap()) as u64)
+        .min()
+        .unwrap_or(0)
 }
 
 pub fn run() -> Result<String, String> {
@@ -125,7 +144,7 @@ pub fn run() -> Result<String, String> {
         .map(str::parse)
         .collect::<Result<Vec<_>, _>>()?;
     let out1 = part1(&wires[0], &wires[1]);
-    let out2 = part2();
+    let out2 = part2(&wires[0], &wires[1]);
     Ok(format!("{} {}", out1, out2))
 }
 
@@ -159,7 +178,7 @@ mod tests {
         };
         assert_eq!(
             w1.intersect(&w2),
-            [(3, 3), (6, 5)].iter().cloned().collect()
+            [(3, 3), (6, 5)].iter().copied().collect()
         )
     }
 
@@ -239,6 +258,85 @@ mod tests {
                 }
             ),
             135
+        );
+    }
+
+    #[test]
+    fn test02() {
+        assert_eq!(
+            part2(
+                &Wire {
+                    path: vec![(Right, 8), (Up, 5), (Left, 5), (Down, 3)]
+                },
+                &Wire {
+                    path: vec![(Up, 7), (Right, 6), (Down, 4), (Left, 4)]
+                }
+            ),
+            30
+        );
+        assert_eq!(
+            part2(
+                &Wire {
+                    path: vec![
+                        (Right, 75),
+                        (Down, 30),
+                        (Right, 83),
+                        (Up, 83),
+                        (Left, 12),
+                        (Down, 49),
+                        (Right, 71),
+                        (Up, 7),
+                        (Left, 72)
+                    ]
+                },
+                &Wire {
+                    path: vec![
+                        (Up, 62),
+                        (Right, 66),
+                        (Up, 55),
+                        (Right, 34),
+                        (Down, 71),
+                        (Right, 55),
+                        (Down, 58),
+                        (Right, 83)
+                    ]
+                }
+            ),
+            610
+        );
+        assert_eq!(
+            part2(
+                &Wire {
+                    path: vec![
+                        (Right, 98),
+                        (Up, 47),
+                        (Right, 26),
+                        (Down, 63),
+                        (Right, 33),
+                        (Up, 87),
+                        (Left, 62),
+                        (Down, 20),
+                        (Right, 33),
+                        (Up, 53),
+                        (Right, 51)
+                    ]
+                },
+                &Wire {
+                    path: vec![
+                        (Up, 98),
+                        (Right, 91),
+                        (Down, 20),
+                        (Right, 16),
+                        (Down, 67),
+                        (Right, 40),
+                        (Up, 7),
+                        (Right, 15),
+                        (Up, 6),
+                        (Right, 7)
+                    ]
+                }
+            ),
+            410
         );
     }
 }
