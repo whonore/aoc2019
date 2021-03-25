@@ -16,10 +16,9 @@ impl Opcode {
         }
     }
 
-    fn size(&self) -> usize {
+    const fn size(&self) -> usize {
         match self {
-            Add(_, _, _) => 4,
-            Mul(_, _, _) => 4,
+            Add(_, _, _) | Mul(_, _, _) => 4,
             Halt => 1,
         }
     }
@@ -41,7 +40,7 @@ impl Intcode {
         match op {
             Add(op1, op2, out) => self.data[out] = op1 + op2,
             Mul(op1, op2, out) => self.data[out] = op1 * op2,
-            _ => {}
+            Halt => {}
         }
         self.ptr += op.size();
         Ok(op == Halt)
@@ -69,7 +68,7 @@ fn part2(data: &[usize]) -> Result<usize, String> {
     for noun in 0..99 {
         for verb in 0..99 {
             let mut prog = Intcode::new(data.to_vec());
-            if prog.run_with(noun, verb).is_ok() && prog.data[0] == 19690720 {
+            if prog.run_with(noun, verb).is_ok() && prog.data[0] == 19_690_720 {
                 return Ok(100 * noun + verb);
             }
         }

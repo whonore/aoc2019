@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 type Point = (i64, i64);
 
-fn dist(p: Point) -> u64 {
+const fn dist(p: Point) -> u64 {
     (p.0.abs() + p.1.abs()) as u64
 }
 
@@ -17,7 +17,7 @@ enum Dir {
 use Dir::*;
 
 impl Dir {
-    fn go(&self, loc: Point, amt: u64) -> Point {
+    const fn go(&self, loc: Point, amt: u64) -> Point {
         match self {
             Up => (loc.0, loc.1 + amt as i64),
             Down => (loc.0, loc.1 - amt as i64),
@@ -51,7 +51,7 @@ impl FromStr for Wire {
                 Ok((dir, amt))
             })
             .collect::<Result<_, Self::Err>>()?;
-        Ok(Wire { path })
+        Ok(Self { path })
     }
 }
 
@@ -92,7 +92,7 @@ impl Wire {
             .collect()
     }
 
-    fn intersect(&self, other: &Wire) -> HashSet<Point> {
+    fn intersect(&self, other: &Self) -> HashSet<Point> {
         let ps1 = self
             .segs()
             .iter()
