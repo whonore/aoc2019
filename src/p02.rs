@@ -83,7 +83,7 @@ pub fn run() -> Result<String, String> {
         .split(',')
         .map(str::parse)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "Bad input")?;
+        .map_err(|_| "Invalid input")?;
     let out1 = part1(&data)?;
     let out2 = part2(&data)?;
     Ok(format!("{} {}", out1, out2))
