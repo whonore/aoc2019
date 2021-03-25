@@ -95,14 +95,12 @@ impl Wire {
     fn intersect(&self, other: &Self) -> HashSet<Point> {
         let ps1 = self
             .segs()
-            .iter()
-            .copied()
+            .into_iter()
             .flatten()
             .collect::<HashSet<Point>>();
         let ps2 = other
             .segs()
-            .iter()
-            .copied()
+            .into_iter()
             .flatten()
             .collect::<HashSet<Point>>();
         ps1.intersection(&ps2).copied().collect()
@@ -110,8 +108,7 @@ impl Wire {
 
     fn steps_to(&self, p: Point) -> Option<usize> {
         self.segs()
-            .iter()
-            .copied()
+            .into_iter()
             .flatten()
             .position(|x| x == p)
             .map(|idx| idx + 1)
@@ -121,8 +118,7 @@ impl Wire {
 fn part1(wire1: &Wire, wire2: &Wire) -> u64 {
     wire1
         .intersect(wire2)
-        .iter()
-        .copied()
+        .into_iter()
         .map(dist)
         .min()
         .unwrap_or(0)
