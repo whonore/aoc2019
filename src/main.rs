@@ -1,5 +1,6 @@
 use std::env;
 
+mod intcode;
 mod p01;
 mod p02;
 mod p03;
