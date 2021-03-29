@@ -173,6 +173,15 @@ impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
         }
     }
 
+    pub fn read_vec(self, stdin: &[i64]) -> IntcodeExec<io::Cursor<Vec<u8>>, O> {
+        self.read_from(io::Cursor::new(
+            stdin
+                .iter()
+                .flat_map(|v| v.to_le_bytes().to_vec())
+                .collect(),
+        ))
+    }
+
     pub fn run(&mut self) -> Result<(), String> {
         self.try_for_each(|res| res)
     }
@@ -277,10 +286,9 @@ mod tests {
 
     #[test]
     fn test_echo() {
-        let input = &1_i64.to_le_bytes()[..];
         let mut p = Intcode::new(vec![3, 0, 4, 0, 99])
             .exec()
-            .read_from(input)
+            .read_vec(&[1])
             .write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
@@ -290,18 +298,16 @@ mod tests {
     fn test_eq() {
         let eq1 = Intcode::new(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
         let eq2 = Intcode::new(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
-        let input1 = &8_i64.to_le_bytes()[..];
-        let input2 = &7_i64.to_le_bytes()[..];
-        let mut p = eq1.exec().read_from(input1).write_to(vec![]);
+        let mut p = eq1.exec().read_vec(&[8]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = eq1.exec().read_from(input2).write_to(vec![]);
+        let mut p = eq1.exec().read_vec(&[7]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
-        let mut p = eq2.exec().read_from(input1).write_to(vec![]);
+        let mut p = eq2.exec().read_vec(&[8]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = eq2.exec().read_from(input2).write_to(vec![]);
+        let mut p = eq2.exec().read_vec(&[7]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
     }
@@ -310,18 +316,16 @@ mod tests {
     fn test_lt() {
         let lt1 = Intcode::new(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
         let lt2 = Intcode::new(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
-        let input1 = &7_i64.to_le_bytes()[..];
-        let input2 = &8_i64.to_le_bytes()[..];
-        let mut p = lt1.exec().read_from(input1).write_to(vec![]);
+        let mut p = lt1.exec().read_vec(&[7]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = lt1.exec().read_from(input2).write_to(vec![]);
+        let mut p = lt1.exec().read_vec(&[8]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
-        let mut p = lt2.exec().read_from(input1).write_to(vec![]);
+        let mut p = lt2.exec().read_vec(&[7]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = lt2.exec().read_from(input2).write_to(vec![]);
+        let mut p = lt2.exec().read_vec(&[8]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
     }
@@ -332,18 +336,16 @@ mod tests {
             3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9,
         ]);
         let if2 = Intcode::new(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
-        let input1 = &1_i64.to_le_bytes()[..];
-        let input2 = &0_i64.to_le_bytes()[..];
-        let mut p = if1.exec().read_from(input1).write_to(vec![]);
+        let mut p = if1.exec().read_vec(&[1]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = if1.exec().read_from(input2).write_to(vec![]);
+        let mut p = if1.exec().read_vec(&[0]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
-        let mut p = if2.exec().read_from(input1).write_to(vec![]);
+        let mut p = if2.exec().read_vec(&[1]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1]);
-        let mut p = if2.exec().read_from(input2).write_to(vec![]);
+        let mut p = if2.exec().read_vec(&[0]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![0]);
     }
@@ -355,16 +357,13 @@ mod tests {
                      ,1101,1000,1,20,4,20,1105,1,46,98,99"
             .parse::<Intcode>()
             .unwrap();
-        let input1 = &7_i64.to_le_bytes()[..];
-        let input2 = &8_i64.to_le_bytes()[..];
-        let input3 = &9_i64.to_le_bytes()[..];
-        let mut p = large.exec().read_from(input1).write_to(vec![]);
+        let mut p = large.exec().read_vec(&[7]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![999]);
-        let mut p = large.exec().read_from(input2).write_to(vec![]);
+        let mut p = large.exec().read_vec(&[8]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1000]);
-        let mut p = large.exec().read_from(input3).write_to(vec![]);
+        let mut p = large.exec().read_vec(&[9]).write_to(vec![]);
         assert!(p.run().is_ok());
         assert_eq!(p.read_out(), vec![1001]);
     }

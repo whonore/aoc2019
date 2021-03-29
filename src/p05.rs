@@ -1,8 +1,7 @@
 use crate::intcode::Intcode;
 
 fn part1(prog: &Intcode) -> Result<i64, String> {
-    let input = &1_i64.to_le_bytes()[..];
-    let mut exec = prog.exec().read_from(input).write_to(vec![]);
+    let mut exec = prog.exec().read_vec(&[1]).write_to(vec![]);
     exec.run()?;
     let out = exec.read_out();
     if out[..out.len().saturating_sub(1)].iter().all(|x| *x == 0) {
@@ -13,8 +12,7 @@ fn part1(prog: &Intcode) -> Result<i64, String> {
 }
 
 fn part2(prog: &Intcode) -> Result<i64, String> {
-    let input = &5_i64.to_le_bytes()[..];
-    let mut exec = prog.exec().read_from(input).write_to(vec![]);
+    let mut exec = prog.exec().read_vec(&[5]).write_to(vec![]);
     exec.run()?;
     exec.read_out()
         .first()
