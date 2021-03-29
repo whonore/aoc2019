@@ -7,8 +7,27 @@ fn run_amp(prog: &Intcode, phases: &[i64]) -> Result<i64, String> {
         prog.exec()
             .read_vec(&[*phase, input])
             .write_to(vec![])
-            .run_return()
+            .run_to_out()
+            .and_then(|res| res.ok_or_else(|| "No return value".into()))
     })
+}
+
+fn run_amp_feedback(prog: &Intcode, phases: &[i64]) -> Result<i64, String> {
+    let mut amps = phases
+        .iter()
+        .map(|phase| prog.exec().read_vec(&[*phase]).write_to(vec![]))
+        .collect::<Vec<_>>();
+    let mut input = 0;
+    loop {
+        for amp in amps.iter_mut() {
+            amp.read_next(&[input]);
+            if let Some(out) = amp.run_to_out()? {
+                input = out;
+            } else {
+                return Ok(input);
+            }
+        }
+    }
 }
 
 fn part1(prog: &Intcode) -> Result<i64, String> {
@@ -19,15 +38,19 @@ fn part1(prog: &Intcode) -> Result<i64, String> {
         .map(|outs| outs.into_iter().max().unwrap())
 }
 
-fn part2() -> u64 {
-    0
+fn part2(prog: &Intcode) -> Result<i64, String> {
+    (5..=9)
+        .permutations(5)
+        .map(|phases| run_amp_feedback(prog, &phases))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|outs| outs.into_iter().max().unwrap())
 }
 
 pub fn run() -> Result<String, String> {
     let input = include_str!("input/p07.txt");
     let prog = input.parse()?;
     let out1 = part1(&prog)?;
-    let out2 = part2();
+    let out2 = part2(&prog)?;
     Ok(format!("{} {}", out1, out2))
 }
 
@@ -51,5 +74,20 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(part1(&p), Ok(65210));
+    }
+
+    #[test]
+    fn test02() {
+        let p = "3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,\
+                 27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5"
+            .parse()
+            .unwrap();
+        assert_eq!(part2(&p), Ok(139629729));
+        let p = "3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,55,26,1001,54,\
+                 -5,54,1105,1,12,1,53,54,53,1008,54,0,55,1001,55,1,55,2,53,55,53,4,\
+                 53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10"
+            .parse()
+            .unwrap();
+        assert_eq!(part2(&p), Ok(18216));
     }
 }

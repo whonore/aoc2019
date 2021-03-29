@@ -1,6 +1,9 @@
-use std::convert::TryInto;
 use std::io;
 use std::str::FromStr;
+
+fn ints_to_bytes(xs: &[i64]) -> Vec<u8> {
+    xs.iter().flat_map(|x| x.to_le_bytes().to_vec()).collect()
+}
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 enum ParamMode {
@@ -174,45 +177,38 @@ impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
     }
 
     pub fn read_vec(self, stdin: &[i64]) -> IntcodeExec<io::Cursor<Vec<u8>>, O> {
-        self.read_from(io::Cursor::new(
-            stdin
-                .iter()
-                .flat_map(|v| v.to_le_bytes().to_vec())
-                .collect(),
-        ))
+        self.read_from(io::Cursor::new(ints_to_bytes(stdin)))
     }
 
-    pub fn run(&mut self) -> Result<(), String> {
-        self.try_for_each(|res| res)
+    pub fn run(&mut self) -> Result<Vec<i64>, String> {
+        self.collect::<Result<Vec<_>, _>>()
+            .map(|outs| outs.iter().copied().filter_map(|out| out).collect())
     }
 
-    pub fn run_with(&mut self, vals: &[(usize, i64)]) -> Result<(), String> {
+    pub fn run_with(&mut self, vals: &[(usize, i64)]) -> Result<Vec<i64>, String> {
         for (idx, val) in vals {
             self.prog[*idx] = *val;
         }
         self.run()
     }
+
+    pub fn run_to_out(&mut self) -> Result<Option<i64>, String> {
+        self.find(|res| res.is_err() || res.as_ref().unwrap().is_some())
+            .unwrap_or(Ok(None))
+    }
 }
 
-impl<I: io::Read> IntcodeExec<I, Vec<u8>> {
-    pub fn read_out(&self) -> Vec<i64> {
-        self.stdout
-            .chunks(8)
-            .map(|bs| i64::from_le_bytes(bs.try_into().unwrap()))
-            .collect()
-    }
-
-    pub fn run_return(&mut self) -> Result<i64, String> {
-        self.run()?;
-        self.read_out()
-            .first()
-            .copied()
-            .ok_or_else(|| "No return value".into())
+impl<I: io::Read + io::Write + io::Seek, O: io::Write> IntcodeExec<I, O> {
+    pub fn read_next(&mut self, stdin: &[i64]) {
+        let pos = self.stdin.seek(io::SeekFrom::Current(0)).unwrap();
+        self.stdin.seek(io::SeekFrom::End(0)).unwrap();
+        self.stdin.write_all(&ints_to_bytes(stdin)).unwrap();
+        self.stdin.seek(io::SeekFrom::Start(pos)).unwrap();
     }
 }
 
 impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
-    type Item = Result<(), String>;
+    type Item = Result<Option<i64>, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let op = Opcode::new(&self.prog, self.ptr);
@@ -221,6 +217,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
         }
         let op = op.unwrap();
         let mut jumped = false;
+        let mut out = None;
 
         match op {
             Arith(binop, v1, v2, out) => self.prog[out] = binop.eval(v1, v2),
@@ -236,6 +233,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
                 self.prog[out] = i64::from_le_bytes(buf);
             }
             Output(val) => {
+                out = Some(val);
                 if let Err(err) = self
                     .stdout
                     .write(&val.to_le_bytes())
@@ -260,7 +258,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
         if op == Halt {
             None
         } else {
-            Some(Ok(()))
+            Some(Ok(out))
         }
     }
 }
@@ -298,8 +296,7 @@ mod tests {
             .exec()
             .read_vec(&[1])
             .write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run_to_out(), Ok(Some(1)));
     }
 
     #[test]
@@ -307,17 +304,13 @@ mod tests {
         let eq1 = Intcode::new(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
         let eq2 = Intcode::new(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
         let mut p = eq1.exec().read_vec(&[8]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = eq1.exec().read_vec(&[7]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
         let mut p = eq2.exec().read_vec(&[8]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = eq2.exec().read_vec(&[7]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
     }
 
     #[test]
@@ -325,17 +318,13 @@ mod tests {
         let lt1 = Intcode::new(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
         let lt2 = Intcode::new(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
         let mut p = lt1.exec().read_vec(&[7]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = lt1.exec().read_vec(&[8]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
         let mut p = lt2.exec().read_vec(&[7]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = lt2.exec().read_vec(&[8]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
     }
 
     #[test]
@@ -345,17 +334,13 @@ mod tests {
         ]);
         let if2 = Intcode::new(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
         let mut p = if1.exec().read_vec(&[1]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = if1.exec().read_vec(&[0]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
         let mut p = if2.exec().read_vec(&[1]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1]);
+        assert_eq!(p.run(), Ok(vec![1]));
         let mut p = if2.exec().read_vec(&[0]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![0]);
+        assert_eq!(p.run(), Ok(vec![0]));
     }
 
     #[test]
@@ -366,13 +351,10 @@ mod tests {
             .parse::<Intcode>()
             .unwrap();
         let mut p = large.exec().read_vec(&[7]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![999]);
+        assert_eq!(p.run(), Ok(vec![999]));
         let mut p = large.exec().read_vec(&[8]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1000]);
+        assert_eq!(p.run(), Ok(vec![1000]));
         let mut p = large.exec().read_vec(&[9]).write_to(vec![]);
-        assert!(p.run().is_ok());
-        assert_eq!(p.read_out(), vec![1001]);
+        assert_eq!(p.run(), Ok(vec![1001]));
     }
 }
