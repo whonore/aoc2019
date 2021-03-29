@@ -201,6 +201,14 @@ impl<I: io::Read> IntcodeExec<I, Vec<u8>> {
             .map(|bs| i64::from_le_bytes(bs.try_into().unwrap()))
             .collect()
     }
+
+    pub fn run_return(&mut self) -> Result<i64, String> {
+        self.run()?;
+        self.read_out()
+            .first()
+            .copied()
+            .ok_or_else(|| "No return value".into())
+    }
 }
 
 impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {

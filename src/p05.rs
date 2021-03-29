@@ -12,12 +12,7 @@ fn part1(prog: &Intcode) -> Result<i64, String> {
 }
 
 fn part2(prog: &Intcode) -> Result<i64, String> {
-    let mut exec = prog.exec().read_vec(&[5]).write_to(vec![]);
-    exec.run()?;
-    exec.read_out()
-        .first()
-        .copied()
-        .ok_or_else(|| "No output".into())
+    prog.exec().read_vec(&[5]).write_to(vec![]).run_return()
 }
 
 pub fn run() -> Result<String, String> {
