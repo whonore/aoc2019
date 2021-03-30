@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+#[derive(PartialEq, Eq, Debug)]
 struct Orbits(HashMap<String, String>);
 
+#[derive(PartialEq, Eq, Debug)]
 struct Parents<'a> {
     orbits: &'a Orbits,
     obj: &'a str,

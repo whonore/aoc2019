@@ -1,13 +1,68 @@
-type Layer = Vec<Vec<u32>>;
+use std::fmt;
+use std::ops::BitOr;
 
-struct Image {
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+enum Pixel {
+    Black,
+    White,
+    Transparent,
+}
+use Pixel::*;
+
+impl Pixel {
+    fn new(pix: u32) -> Self {
+        match pix {
+            0 => Black,
+            1 => White,
+            _ => Transparent,
+        }
+    }
+}
+
+impl BitOr for Pixel {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Transparent, _) => rhs,
+            (_, _) => self,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct Layer(Vec<Vec<Pixel>>);
+
+impl BitOr for Layer {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(
+            self.0
+                .iter()
+                .zip(rhs.0.iter())
+                .map(|(row1, row2)| row1.iter().zip(row2.iter()).map(|(x, y)| *x | *y).collect())
+                .collect(),
+        )
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+struct Layers {
     width: usize,
     height: usize,
     depth: usize,
     layers: Vec<Layer>,
 }
 
-impl Image {
+#[derive(PartialEq, Eq, Debug)]
+struct Image {
+    width: usize,
+    height: usize,
+    pixels: Layer,
+}
+
+impl Layers {
     fn new(width: usize, height: usize, pixels: &str) -> Self {
         Self {
             width,
@@ -16,39 +71,72 @@ impl Image {
             layers: pixels
                 .trim()
                 .chars()
-                .map(|c| c.to_digit(10).unwrap())
+                .map(|c| Pixel::new(c.to_digit(10).unwrap()))
                 .collect::<Vec<_>>()
                 .chunks(width * height)
-                .map(|layer| layer.chunks(width).map(|row| row.to_vec()).collect())
+                .map(|layer| Layer(layer.chunks(width).map(|row| row.to_vec()).collect()))
                 .collect(),
         }
     }
 
-    fn count_digit(&self, layer: usize, digit: u32) -> usize {
+    fn count_pixel(&self, layer: usize, pix: Pixel) -> usize {
         self.layers[layer]
+            .0
             .iter()
-            .map(|row| row.iter().filter(|v| **v == digit).count())
+            .map(|row| row.iter().filter(|v| **v == pix).count())
             .sum()
+    }
+
+    fn decode(&self) -> Image {
+        Image {
+            width: self.width,
+            height: self.height,
+            pixels: self
+                .layers
+                .clone()
+                .into_iter()
+                .reduce(|x, y| x | y)
+                .unwrap(),
+        }
     }
 }
 
-fn part1(img: &Image) -> usize {
-    (0..img.depth)
-        .min_by_key(|layer| img.count_digit(*layer, 0))
-        .map(|layer| img.count_digit(layer, 1) * img.count_digit(layer, 2))
+impl fmt::Display for Image {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for row in &self.pixels.0 {
+            for pix in row {
+                write!(
+                    f,
+                    "{}",
+                    match pix {
+                        White => "█",
+                        _ => " ",
+                    }
+                )?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+fn part1(layers: &Layers) -> usize {
+    (0..layers.depth)
+        .min_by_key(|layer| layers.count_pixel(*layer, Black))
+        .map(|layer| layers.count_pixel(layer, White) * layers.count_pixel(layer, Transparent))
         .unwrap()
 }
 
-fn part2() -> u64 {
-    0
+fn part2(layers: &Layers) -> String {
+    format!("{}", layers.decode())
 }
 
 pub fn run() -> Result<String, String> {
     let input = include_str!("input/p08.txt");
-    let img = Image::new(25, 6, input);
+    let img = Layers::new(25, 6, input);
     let out1 = part1(&img);
-    let out2 = part2();
-    Ok(format!("{} {}", out1, out2))
+    let out2 = part2(&img);
+    Ok(format!("{}\n{}", out1, out2))
 }
 
 #[cfg(test)]
@@ -56,7 +144,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test01() {
-        assert_eq!(part1(), 0);
+    fn test_decode() {
+        assert_eq!(
+            Layers::new(2, 2, "0222112222120000").decode().pixels,
+            Layer(vec![vec![Black, White], vec![White, Black]])
+        );
     }
 }
