@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::io;
+use std::ops::Index;
 use std::str::FromStr;
 
 fn ints_to_bytes(xs: &[i64]) -> Vec<u8> {
@@ -9,15 +11,17 @@ fn ints_to_bytes(xs: &[i64]) -> Vec<u8> {
 enum ParamMode {
     Position,
     Immediate,
+    Relative,
 }
 use ParamMode::*;
 
 impl ParamMode {
     fn new(op: i64, param: u32) -> Self {
-        if (op / 10_i64.pow(param + 1)) % 10 == 1 {
-            Immediate
-        } else {
-            Position
+        match (op / 10_i64.pow(param + 1)) % 10 {
+            0 => Position,
+            1 => Immediate,
+            2 => Relative,
+            _ => unreachable!(),
         }
     }
 }
@@ -61,67 +65,104 @@ enum Opcode {
     Output(i64),
     Jump(bool, i64, usize),
     Compare(CmpOp, i64, i64, usize),
+    AdjustBase(i64),
     Halt,
 }
 use Opcode::*;
 
 impl Opcode {
-    fn new(prog: &[i64], ptr: usize) -> Result<Self, String> {
-        match prog[ptr] % 100 {
+    fn new(mem: &Memory) -> Result<Self, String> {
+        match mem.instr() % 100 {
             op @ 1 | op @ 2 => Ok(Arith(
                 if op == 1 { Add } else { Mul },
-                Self::in_param(prog, ptr, 1),
-                Self::in_param(prog, ptr, 2),
-                Self::out_param(prog, ptr, 3) as usize,
+                mem.in_param(1),
+                mem.in_param(2),
+                mem.out_param(3),
             )),
-            3 => Ok(Input(Self::out_param(prog, ptr, 1))),
-            4 => Ok(Output(Self::in_param(prog, ptr, 1))),
-            op @ 5 | op @ 6 => Ok(Jump(
-                op == 5,
-                Self::in_param(prog, ptr, 1),
-                Self::in_param(prog, ptr, 2) as usize,
-            )),
+            3 => Ok(Input(mem.out_param(1))),
+            4 => Ok(Output(mem.in_param(1))),
+            op @ 5 | op @ 6 => Ok(Jump(op == 5, mem.in_param(1), mem.in_param(2) as usize)),
             op @ 7 | op @ 8 => Ok(Compare(
                 if op == 7 { Lt } else { Eq },
-                Self::in_param(prog, ptr, 1),
-                Self::in_param(prog, ptr, 2),
-                Self::out_param(prog, ptr, 3),
+                mem.in_param(1),
+                mem.in_param(2),
+                mem.out_param(3),
             )),
+            9 => Ok(AdjustBase(mem.in_param(1))),
             99 => Ok(Halt),
             op => Err(format!("Invalid opcode {}", op)),
         }
-    }
-
-    fn in_param(prog: &[i64], ptr: usize, param: usize) -> i64 {
-        match ParamMode::new(prog[ptr], param as u32) {
-            Immediate => prog[ptr + param],
-            Position => prog[prog[ptr + param] as usize],
-        }
-    }
-
-    const fn out_param(prog: &[i64], ptr: usize, param: usize) -> usize {
-        prog[ptr + param] as usize
     }
 
     const fn size(&self) -> usize {
         match self {
             Arith(_, _, _, _) | Compare(_, _, _, _) => 4,
             Jump(_, _, _) => 3,
-            Input(_) | Output(_) => 2,
+            Input(_) | Output(_) | AdjustBase(_) => 2,
             Halt => 1,
         }
     }
 }
 
 #[derive(PartialEq, Eq, Debug)]
+pub struct Memory {
+    mem: HashMap<usize, i64>,
+    ptr: usize,
+    base: i64,
+}
+
+impl Memory {
+    fn set(&mut self, ptr: usize, val: i64) {
+        self.mem.insert(ptr, val);
+    }
+
+    fn instr(&self) -> i64 {
+        self[self.ptr]
+    }
+
+    fn in_param(&self, param: usize) -> i64 {
+        match ParamMode::new(self.instr(), param as u32) {
+            Immediate => self[self.ptr + param],
+            Position => self[self[self.ptr + param] as usize],
+            Relative => self[(self.base + self[self.ptr + param]) as usize],
+        }
+    }
+
+    fn out_param(&self, param: usize) -> usize {
+        match ParamMode::new(self.instr(), param as u32) {
+            Immediate => unreachable!(),
+            Position => self[self.ptr + param] as usize,
+            Relative => (self.base + self[self.ptr + param]) as usize,
+        }
+    }
+}
+
+impl From<Vec<i64>> for Memory {
+    fn from(code: Vec<i64>) -> Self {
+        Self {
+            mem: code.iter().copied().enumerate().collect(),
+            ptr: 0,
+            base: 0,
+        }
+    }
+}
+
+impl Index<usize> for Memory {
+    type Output = i64;
+
+    fn index(&self, ptr: usize) -> &Self::Output {
+        self.mem.get(&ptr).unwrap_or(&0)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub struct Intcode {
-    pub prog: Vec<i64>,
+    pub code: Vec<i64>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct IntcodeExec<I, O> {
-    pub prog: Vec<i64>,
-    ptr: usize,
+    mem: Memory,
     stdin: I,
     stdout: O,
 }
@@ -129,9 +170,9 @@ pub struct IntcodeExec<I, O> {
 impl FromStr for Intcode {
     type Err = String;
 
-    fn from_str(prog: &str) -> Result<Self, Self::Err> {
+    fn from_str(code: &str) -> Result<Self, Self::Err> {
         Ok(Self {
-            prog: prog
+            code: code
                 .trim()
                 .split(',')
                 .map(str::parse)
@@ -141,16 +182,24 @@ impl FromStr for Intcode {
     }
 }
 
-impl Intcode {
-    #[allow(dead_code)]
-    pub fn new(prog: Vec<i64>) -> Self {
-        Self { prog }
+impl From<Vec<i64>> for Intcode {
+    fn from(code: Vec<i64>) -> Self {
+        Self { code }
     }
+}
 
+impl<I, O> Index<usize> for IntcodeExec<I, O> {
+    type Output = i64;
+
+    fn index(&self, idx: usize) -> &Self::Output {
+        &self.mem[idx]
+    }
+}
+
+impl Intcode {
     pub fn exec(&self) -> IntcodeExec<io::Empty, io::Sink> {
         IntcodeExec {
-            prog: self.prog.clone(),
-            ptr: 0,
+            mem: self.code.clone().into(),
             stdin: io::empty(),
             stdout: io::sink(),
         }
@@ -160,8 +209,7 @@ impl Intcode {
 impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
     pub fn read_from<I2: io::Read>(self, stdin: I2) -> IntcodeExec<I2, O> {
         IntcodeExec {
-            prog: self.prog,
-            ptr: self.ptr,
+            mem: self.mem,
             stdin,
             stdout: self.stdout,
         }
@@ -169,8 +217,7 @@ impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
 
     pub fn write_to<O2: io::Write>(self, stdout: O2) -> IntcodeExec<I, O2> {
         IntcodeExec {
-            prog: self.prog,
-            ptr: self.ptr,
+            mem: self.mem,
             stdin: self.stdin,
             stdout,
         }
@@ -187,7 +234,7 @@ impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
 
     pub fn run_with(&mut self, vals: &[(usize, i64)]) -> Result<Vec<i64>, String> {
         for (idx, val) in vals {
-            self.prog[*idx] = *val;
+            self.mem.set(*idx, *val);
         }
         self.run()
     }
@@ -211,7 +258,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
     type Item = Result<Option<i64>, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let op = Opcode::new(&self.prog, self.ptr);
+        let op = Opcode::new(&self.mem);
         if let Err(err) = op {
             return Some(Err(err));
         }
@@ -220,7 +267,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
         let mut out = None;
 
         match op {
-            Arith(binop, v1, v2, out) => self.prog[out] = binop.eval(v1, v2),
+            Arith(binop, v1, v2, out) => self.mem.set(out, binop.eval(v1, v2)),
             Input(out) => {
                 let mut buf = [0; 8];
                 if let Err(err) = self
@@ -230,7 +277,7 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
                 {
                     return Some(Err(err));
                 }
-                self.prog[out] = i64::from_le_bytes(buf);
+                self.mem.set(out, i64::from_le_bytes(buf));
             }
             Output(val) => {
                 out = Some(val);
@@ -244,16 +291,17 @@ impl<I: io::Read, O: io::Write> Iterator for IntcodeExec<I, O> {
             }
             Jump(b, v, ptr) => {
                 if b ^ (v == 0) {
-                    self.ptr = ptr;
+                    self.mem.ptr = ptr;
                     jumped = true;
                 }
             }
-            Compare(cmp, v1, v2, out) => self.prog[out] = if cmp.eval(v1, v2) { 1 } else { 0 },
+            Compare(cmp, v1, v2, out) => self.mem.set(out, if cmp.eval(v1, v2) { 1 } else { 0 }),
+            AdjustBase(v) => self.mem.base += v,
             Halt => {}
         };
 
         if !jumped {
-            self.ptr += op.size();
+            self.mem.ptr += op.size();
         }
         if op == Halt {
             None
@@ -269,30 +317,33 @@ mod tests {
 
     #[test]
     fn test_empty_io() {
-        let mut p = Intcode::new(vec![1, 0, 0, 0, 99]).exec();
+        let mut p = Intcode::from(vec![1, 0, 0, 0, 99]).exec();
         assert!(p.run().is_ok());
-        assert_eq!(p.prog, vec![2, 0, 0, 0, 99]);
-        let mut p = Intcode::new(vec![2, 3, 0, 3, 99]).exec();
+        assert_eq!(p.mem.mem, Memory::from(vec![2, 0, 0, 0, 99]).mem);
+        let mut p = Intcode::from(vec![2, 3, 0, 3, 99]).exec();
         assert!(p.run().is_ok());
-        assert_eq!(p.prog, vec![2, 3, 0, 6, 99]);
-        let mut p = Intcode::new(vec![2, 4, 4, 5, 99, 0]).exec();
+        assert_eq!(p.mem.mem, Memory::from(vec![2, 3, 0, 6, 99]).mem);
+        let mut p = Intcode::from(vec![2, 4, 4, 5, 99, 0]).exec();
         assert!(p.run().is_ok());
-        assert_eq!(p.prog, vec![2, 4, 4, 5, 99, 9801]);
-        let mut p = Intcode::new(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]).exec();
+        assert_eq!(p.mem.mem, Memory::from(vec![2, 4, 4, 5, 99, 9801]).mem);
+        let mut p = Intcode::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]).exec();
         assert!(p.run().is_ok());
-        assert_eq!(p.prog, vec![30, 1, 1, 4, 2, 5, 6, 0, 99]);
+        assert_eq!(
+            p.mem.mem,
+            Memory::from(vec![30, 1, 1, 4, 2, 5, 6, 0, 99]).mem
+        );
     }
 
     #[test]
     fn test_param_mode() {
-        let mut p = Intcode::new(vec![1101, 100, -1, 4, 0]).exec();
+        let mut p = Intcode::from(vec![1101, 100, -1, 4, 0]).exec();
         assert!(p.run().is_ok());
-        assert_eq!(p.prog, vec![1101, 100, -1, 4, 99]);
+        assert_eq!(p.mem.mem, Memory::from(vec![1101, 100, -1, 4, 99]).mem);
     }
 
     #[test]
     fn test_echo() {
-        let mut p = Intcode::new(vec![3, 0, 4, 0, 99])
+        let mut p = Intcode::from(vec![3, 0, 4, 0, 99])
             .exec()
             .read_vec(&[1])
             .write_to(vec![]);
@@ -301,8 +352,8 @@ mod tests {
 
     #[test]
     fn test_eq() {
-        let eq1 = Intcode::new(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
-        let eq2 = Intcode::new(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
+        let eq1 = Intcode::from(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
+        let eq2 = Intcode::from(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
         let mut p = eq1.exec().read_vec(&[8]).write_to(vec![]);
         assert_eq!(p.run(), Ok(vec![1]));
         let mut p = eq1.exec().read_vec(&[7]).write_to(vec![]);
@@ -315,8 +366,8 @@ mod tests {
 
     #[test]
     fn test_lt() {
-        let lt1 = Intcode::new(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
-        let lt2 = Intcode::new(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
+        let lt1 = Intcode::from(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
+        let lt2 = Intcode::from(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
         let mut p = lt1.exec().read_vec(&[7]).write_to(vec![]);
         assert_eq!(p.run(), Ok(vec![1]));
         let mut p = lt1.exec().read_vec(&[8]).write_to(vec![]);
@@ -329,10 +380,10 @@ mod tests {
 
     #[test]
     fn test_if() {
-        let if1 = Intcode::new(vec![
+        let if1 = Intcode::from(vec![
             3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9,
         ]);
-        let if2 = Intcode::new(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
+        let if2 = Intcode::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
         let mut p = if1.exec().read_vec(&[1]).write_to(vec![]);
         assert_eq!(p.run(), Ok(vec![1]));
         let mut p = if1.exec().read_vec(&[0]).write_to(vec![]);
@@ -356,5 +407,26 @@ mod tests {
         assert_eq!(p.run(), Ok(vec![1000]));
         let mut p = large.exec().read_vec(&[9]).write_to(vec![]);
         assert_eq!(p.run(), Ok(vec![1001]));
+    }
+
+    #[test]
+    fn test_relative() {
+        let code = vec![
+            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
+        ];
+        let mut p = Intcode::from(code.clone()).exec().write_to(vec![]);
+        assert_eq!(p.run(), Ok(code));
+    }
+
+    #[test]
+    fn test_big_number() {
+        let mut p = Intcode::from(vec![1102, 34915192, 34915192, 7, 4, 7, 99, 0])
+            .exec()
+            .write_to(vec![]);
+        assert_eq!(p.run(), Ok(vec![1219070632396864]));
+        let mut p = Intcode::from(vec![104, 1125899906842624, 99])
+            .exec()
+            .write_to(vec![]);
+        assert_eq!(p.run(), Ok(vec![1125899906842624]));
     }
 }
