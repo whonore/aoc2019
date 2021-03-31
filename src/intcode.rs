@@ -34,7 +34,7 @@ enum BinOp {
 use BinOp::*;
 
 impl BinOp {
-    fn eval(&self, v1: i64, v2: i64) -> i64 {
+    const fn eval(self, v1: i64, v2: i64) -> i64 {
         match self {
             Add => v1 + v2,
             Mul => v1 * v2,
@@ -50,7 +50,7 @@ enum CmpOp {
 use CmpOp::*;
 
 impl CmpOp {
-    fn eval(&self, v1: i64, v2: i64) -> bool {
+    const fn eval(self, v1: i64, v2: i64) -> bool {
         match self {
             Lt => v1 < v2,
             Eq => v1 == v2,
@@ -60,11 +60,11 @@ impl CmpOp {
 
 #[derive(PartialEq, Eq, Debug)]
 enum Opcode {
-    Arith(BinOp, i64, i64, usize),
-    Input(usize),
+    Arith(BinOp, i64, i64, u64),
+    Input(u64),
     Output(i64),
-    Jump(bool, i64, usize),
-    Compare(CmpOp, i64, i64, usize),
+    Jump(bool, i64, u64),
+    Compare(CmpOp, i64, i64, u64),
     AdjustBase(i64),
     Halt,
 }
@@ -81,7 +81,7 @@ impl Opcode {
             )),
             3 => Ok(Input(mem.out_param(1))),
             4 => Ok(Output(mem.in_param(1))),
-            op @ 5 | op @ 6 => Ok(Jump(op == 5, mem.in_param(1), mem.in_param(2) as usize)),
+            op @ 5 | op @ 6 => Ok(Jump(op == 5, mem.in_param(1), mem.in_param(2) as u64)),
             op @ 7 | op @ 8 => Ok(Compare(
                 if op == 7 { Lt } else { Eq },
                 mem.in_param(1),
@@ -94,7 +94,7 @@ impl Opcode {
         }
     }
 
-    const fn size(&self) -> usize {
+    const fn size(&self) -> u64 {
         match self {
             Arith(_, _, _, _) | Compare(_, _, _, _) => 4,
             Jump(_, _, _) => 3,
@@ -106,13 +106,13 @@ impl Opcode {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Memory {
-    mem: HashMap<usize, i64>,
-    ptr: usize,
+    mem: HashMap<u64, i64>,
+    ptr: u64,
     base: i64,
 }
 
 impl Memory {
-    fn set(&mut self, ptr: usize, val: i64) {
+    fn set(&mut self, ptr: u64, val: i64) {
         self.mem.insert(ptr, val);
     }
 
@@ -120,19 +120,19 @@ impl Memory {
         self[self.ptr]
     }
 
-    fn in_param(&self, param: usize) -> i64 {
+    fn in_param(&self, param: u64) -> i64 {
         match ParamMode::new(self.instr(), param as u32) {
             Immediate => self[self.ptr + param],
-            Position => self[self[self.ptr + param] as usize],
-            Relative => self[(self.base + self[self.ptr + param]) as usize],
+            Position => self[self[self.ptr + param] as u64],
+            Relative => self[(self.base + self[self.ptr + param]) as u64],
         }
     }
 
-    fn out_param(&self, param: usize) -> usize {
+    fn out_param(&self, param: u64) -> u64 {
         match ParamMode::new(self.instr(), param as u32) {
             Immediate => unreachable!(),
-            Position => self[self.ptr + param] as usize,
-            Relative => (self.base + self[self.ptr + param]) as usize,
+            Position => self[self.ptr + param] as u64,
+            Relative => (self.base + self[self.ptr + param]) as u64,
         }
     }
 }
@@ -140,17 +140,21 @@ impl Memory {
 impl From<Vec<i64>> for Memory {
     fn from(code: Vec<i64>) -> Self {
         Self {
-            mem: code.iter().copied().enumerate().collect(),
+            mem: code
+                .iter()
+                .enumerate()
+                .map(|(idx, v)| (idx as u64, *v))
+                .collect(),
             ptr: 0,
             base: 0,
         }
     }
 }
 
-impl Index<usize> for Memory {
+impl Index<u64> for Memory {
     type Output = i64;
 
-    fn index(&self, ptr: usize) -> &Self::Output {
+    fn index(&self, ptr: u64) -> &Self::Output {
         self.mem.get(&ptr).unwrap_or(&0)
     }
 }
@@ -188,10 +192,10 @@ impl From<Vec<i64>> for Intcode {
     }
 }
 
-impl<I, O> Index<usize> for IntcodeExec<I, O> {
+impl<I, O> Index<u64> for IntcodeExec<I, O> {
     type Output = i64;
 
-    fn index(&self, idx: usize) -> &Self::Output {
+    fn index(&self, idx: u64) -> &Self::Output {
         &self.mem[idx]
     }
 }
@@ -232,7 +236,7 @@ impl<I: io::Read, O: io::Write> IntcodeExec<I, O> {
             .map(|outs| outs.iter().copied().filter_map(|out| out).collect())
     }
 
-    pub fn run_with(&mut self, vals: &[(usize, i64)]) -> Result<Vec<i64>, String> {
+    pub fn run_with(&mut self, vals: &[(u64, i64)]) -> Result<Vec<i64>, String> {
         for (idx, val) in vals {
             self.mem.set(*idx, *val);
         }

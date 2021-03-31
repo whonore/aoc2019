@@ -40,7 +40,7 @@ impl Orbits {
         }
     }
 
-    fn parents<'a>(&'a self, obj: &'a str) -> Parents<'a> {
+    const fn parents<'a>(&'a self, obj: &'a str) -> Parents<'a> {
         Parents {
             orbits: self,
             obj,
@@ -53,8 +53,7 @@ impl Orbits {
         self.parents(obj2)
             .filter(|(p, _)| parents1.contains_key(p))
             .min_by_key(|&(_, d)| d)
-            .map(|(common, d)| d + parents1[&common])
-            .unwrap_or(0)
+            .map_or(0, |(common, d)| d + parents1[&common])
     }
 }
 

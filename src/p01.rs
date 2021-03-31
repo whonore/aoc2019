@@ -1,8 +1,8 @@
-fn calc_fuel(mass: u64) -> u64 {
+const fn calc_fuel(mass: u64) -> u64 {
     (mass / 3).saturating_sub(2)
 }
 
-fn calc_fuel_all(mass: u64) -> u64 {
+const fn calc_fuel_all(mass: u64) -> u64 {
     let mut tot = 0;
     let mut mass = mass;
     while mass > 0 {

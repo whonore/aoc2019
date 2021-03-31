@@ -14,7 +14,8 @@ impl Pixel {
         match pix {
             0 => Black,
             1 => White,
-            _ => Transparent,
+            2 => Transparent,
+            _ => unreachable!(),
         }
     }
 }
@@ -109,7 +110,7 @@ impl fmt::Display for Image {
                     f,
                     "{}",
                     match pix {
-                        White => "█",
+                        White => "\u{2588}",
                         _ => " ",
                     }
                 )?;

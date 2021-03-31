@@ -19,7 +19,7 @@ fn run_amp_feedback(prog: &Intcode, phases: &[i64]) -> Result<i64, String> {
         .collect::<Vec<_>>();
     let mut input = 0;
     loop {
-        for amp in amps.iter_mut() {
+        for amp in &mut amps {
             amp.read_next(&[input]);
             if let Some(out) = amp.run_to_out()? {
                 input = out;
