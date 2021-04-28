@@ -159,6 +159,7 @@ fn part1(map: &Map) -> (Point, usize) {
         .unwrap()
 }
 
+// TODO: incomplete
 fn part2(map: &Map, p: Point) -> isize {
     map.vaporize_from(p)
         .nth(199)
