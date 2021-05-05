@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign};
 use std::str::FromStr;
@@ -9,6 +10,18 @@ fn cmp(x: i64, y: i64) -> i64 {
         Ordering::Less => 1,
         Ordering::Equal => 0,
     }
+}
+
+fn gcd(x: u64, y: u64) -> u64 {
+    if x == 0 {
+        y
+    } else {
+        gcd(y % x, x)
+    }
+}
+
+fn lcm(x: u64, y: u64) -> u64 {
+    (x * y) / gcd(x, y)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -149,25 +162,44 @@ fn step(moons: &mut [Body]) {
     }
 }
 
-fn part1(moons: &mut [Body], steps: u64) -> u64 {
-    for _ in 0..steps {
+fn step_until_repeat<F>(moons: &mut [Body], axis: F) -> u64
+where
+    F: Fn(&Body) -> (i64, i64),
+{
+    let mut seen = HashSet::<Vec<(i64, i64)>>::new();
+    for cnt in 0.. {
+        let axes = moons.iter().map(|moon| axis(moon)).collect::<Vec<_>>();
+        if seen.contains(&axes) {
+            return cnt;
+        }
+        seen.insert(axes);
         step(moons);
+    }
+    unreachable!();
+}
+
+fn part1(mut moons: Vec<Body>, steps: u64) -> u64 {
+    for _ in 0..steps {
+        step(&mut moons);
     }
     moons.iter().map(|moon| moon.energy()).sum()
 }
 
-fn part2() -> u64 {
-    0
+fn part2(mut moons: Vec<Body>) -> u64 {
+    let x_cnt = step_until_repeat(&mut moons.clone(), |moon| (moon.pos.x, moon.vel.x));
+    let y_cnt = step_until_repeat(&mut moons.clone(), |moon| (moon.pos.y, moon.vel.y));
+    let z_cnt = step_until_repeat(&mut moons, |moon| (moon.pos.z, moon.vel.z));
+    [x_cnt, y_cnt, z_cnt].iter().copied().fold(1, lcm)
 }
 
 pub fn run() -> Result<String, String> {
     let input = include_str!("input/p12.txt");
-    let mut moons = input
+    let moons = input
         .lines()
         .map(|line| Ok(Body::new(line.parse()?)))
         .collect::<Result<Vec<_>, String>>()?;
-    let out1 = part1(&mut moons, 1000);
-    let out2 = part2();
+    let out1 = part1(moons.clone(), 1000);
+    let out2 = part2(moons);
     Ok(format!("{} {}", out1, out2))
 }
 
@@ -177,19 +209,30 @@ mod tests {
 
     #[test]
     fn test01() {
-        let mut moons = [
+        let moons = vec![
             Body::new(Point::from((-1, 0, 2))),
             Body::new(Point::from((2, -10, -7))),
             Body::new(Point::from((4, -8, 8))),
             Body::new(Point::from((3, 5, -1))),
         ];
-        assert_eq!(part1(&mut moons, 10), 179);
-        let mut moons = [
+        assert_eq!(part1(moons, 10), 179);
+        let moons = vec![
             Body::new(Point::from((-8, -10, 0))),
             Body::new(Point::from((5, 5, 10))),
             Body::new(Point::from((2, -7, 3))),
             Body::new(Point::from((9, -8, -3))),
         ];
-        assert_eq!(part1(&mut moons, 100), 1940);
+        assert_eq!(part1(moons, 100), 1940);
+    }
+
+    #[test]
+    fn test02() {
+        let moons = vec![
+            Body::new(Point::from((-8, -10, 0))),
+            Body::new(Point::from((5, 5, 10))),
+            Body::new(Point::from((2, -7, 3))),
+            Body::new(Point::from((9, -8, -3))),
+        ];
+        assert_eq!(part2(moons), 4_686_774_924);
     }
 }
